@@ -1,16 +1,16 @@
 {
-  "name": "atool-build",
-  "version": "0.7.17",
+  "name": "mpaas-component-build",
+  "version": "0.0.1",
   "description": "Build tool based on webpack",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ant-tool/atool-build"
+    "url": "https://github.com/hanshenu/mpaas-component-build"
   },
-  "homepage": "https://github.com/ant-tool/atool-build",
-  "author": "chencheng <sorrycc@gmail.com>",
+  "homepage": "https://github.com/ant-tool/mpaas-component-build",
+  "author": "hanshenu hanshenu@gmail.com",
   "license": "MIT",
   "bin": {
-    "atool-build": "./bin/atool-build"
+    "mpaas-component-build": "./bin/mpaas-component-build"
   },
   "files": [
     "bin",
@@ -40,8 +40,10 @@
     "chalk": "^1.1.1",
     "commander": "~2.9.0",
     "css-loader": "~0.23.0",
+    "deasync": "^0.1.7",
     "extract-text-webpack-plugin": "~1.0.1",
     "file-loader": "~0.8.4",
+    "fs-extra": "^0.30.0",
     "json-loader": "~0.5.4",
     "less": "~2.6.0",
     "less-loader": "~2.2.0",

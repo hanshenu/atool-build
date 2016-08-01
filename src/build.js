@@ -1,160 +1,527 @@
 import { join, resolve } from 'path';
-import { writeFileSync } from 'fs';
+import fs from 'fs-extra';
 import webpack, { ProgressPlugin } from 'webpack';
 import chalk from 'chalk';
 import mergeCustomConfig from './mergeCustomConfig';
 import getWebpackCommonConfig from './getWebpackCommonConfig';
+import MpaasLibReferencePlugin from './MpaasLibReferencePlugin';
+import deasync from 'deasync';
+
+function addMpaasCommonRefs(args, webpackConfig) {
+    var common_path = join(args.cwd, './libs/mpaas_common/');
+    if (fs.existsSync(common_path)) {
+        var files = fs.readdirSync(common_path);
+        files.forEach(function(file) {
+            var stats = fs.statSync(common_path + '/' + file);
+            if (stats.isFile() && file.indexOf("manifest.json", file.length - "manifest.json".length) !== -1) {
+                webpackConfig.plugins = [...webpackConfig.plugins,
+                    new MpaasLibReferencePlugin({
+                        context: args.cwd,
+                        manifestname: join(common_path, file),
+                    })
+                ]
+            }
+        });
+    }
+}
+
+function getBizLibWebpackConfig(args) {
+
+    let webpackConfig = getWebpackCommonConfig(args);
+
+    const pkg = require(join(args.cwd, 'package.json'));
+
+    webpackConfig.entry = {};
+    webpackConfig.entry[pkg.name + "_biz_lib"] = ["./src/entry/" + pkg.name];
+
+    webpackConfig.output.path = join(args.cwd, "libs/biz");
+    webpackConfig.output.filename = "[name]-[hash].js";
+    webpackConfig.output.library = "[name]";
+    webpackConfig.output.manifestname = join(args.cwd, "libs/biz", "[name]-manifest.json");
+
+    addMpaasCommonRefs(args, webpackConfig);
+
+    webpackConfig.plugins = [...webpackConfig.plugins,
+        new MpaasLibReferencePlugin({
+            context: args.cwd,
+            manifestname: join(args.cwd, './libs/mpaas_common/mpaas_common-manifest.json'),
+        }),
+
+        new webpack.DllPlugin({
+            path: webpackConfig.output.manifestname,
+            name: "[name]"
+        })
+    ];
+
+    // Config if no --no-compress.
+    if (args.compress) {
+        webpackConfig.UglifyJsPluginConfig = {
+            output: {
+                ascii_only: true,
+            },
+            compress: {
+                warnings: false,
+            },
+        };
+        webpackConfig.plugins = [...webpackConfig.plugins,
+            new webpack.optimize.UglifyJsPlugin(webpackConfig.UglifyJsPluginConfig),
+            new webpack.DefinePlugin({
+                'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production'),
+            }),
+        ];
+    } else {
+        if (process.env.NODE_ENV) {
+            webpackConfig.plugins = [...webpackConfig.plugins,
+                new webpack.DefinePlugin({
+                    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV),
+                }),
+            ];
+        }
+    }
+
+    webpackConfig.plugins = [...webpackConfig.plugins,
+        new webpack.optimize.DedupePlugin(),
+        new webpack.NoErrorsPlugin(),
+    ];
+
+    // Output map.json if hash.
+    if (args.hash) {
+        const pkg = require(join(args.cwd, 'package.json'));
+        webpackConfig.output.filename = webpackConfig.output.chunkFilename = '[name]-[chunkhash].js';
+        webpackConfig.plugins = [...webpackConfig.plugins,
+            require('map-json-webpack-plugin')({
+                assetsPath: pkg.name,
+            }),
+        ];
+    }
+
+    return webpackConfig;
+}
+
+
+function getWrapperLibWebpackConfig(args) {
+    let webpackConfig = getWebpackCommonConfig(args);
+
+    const pkg = require(join(args.cwd, 'package.json'));
+
+    webpackConfig.entry = {};
+    webpackConfig.entry[pkg.name + "_wrapper_lib"] = ["./src/entry/" + pkg.name + "wrapper"];
+
+    webpackConfig.output.path = join(args.cwd, "libs/wrapper");
+    webpackConfig.output.filename = "[name]-[hash].js";
+    webpackConfig.output.library = "[name]";
+    webpackConfig.output.manifestname = join(args.cwd, "libs/wrapper", "[name]-manifest.json");
+
+    addMpaasCommonRefs(args, webpackConfig);
+
+    webpackConfig.plugins = [...webpackConfig.plugins,
+
+        new MpaasLibReferencePlugin({
+            context: args.cwd,
+            manifestname: join(args.cwd, './libs/biz/' + pkg.name + '_biz_lib-manifest.json')
+        }),
+
+        new webpack.DllPlugin({
+            path: webpackConfig.output.manifestname,
+            name: "[name]"
+        })
+    ]
+
+    // Config if no --no-compress.
+    if (args.compress) {
+        webpackConfig.UglifyJsPluginConfig = {
+            output: {
+                ascii_only: true,
+            },
+            compress: {
+                warnings: false,
+            },
+        };
+        webpackConfig.plugins = [...webpackConfig.plugins,
+            new webpack.optimize.UglifyJsPlugin(webpackConfig.UglifyJsPluginConfig),
+            new webpack.DefinePlugin({
+                'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production'),
+            }),
+        ];
+    } else {
+        if (process.env.NODE_ENV) {
+            webpackConfig.plugins = [...webpackConfig.plugins,
+                new webpack.DefinePlugin({
+                    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV),
+                }),
+            ];
+        }
+    }
+
+    webpackConfig.plugins = [...webpackConfig.plugins,
+        new webpack.optimize.DedupePlugin(),
+        new webpack.NoErrorsPlugin(),
+    ];
+
+    // Output map.json if hash.
+    if (args.hash) {
+        const pkg = require(join(args.cwd, 'package.json'));
+        webpackConfig.output.filename = webpackConfig.output.chunkFilename = '[name]-[chunkhash].js';
+        webpackConfig.plugins = [...webpackConfig.plugins,
+            require('map-json-webpack-plugin')({
+                assetsPath: pkg.name,
+            }),
+        ];
+    }
+
+    return webpackConfig;
+}
+
+
+
+function getLoaderLibWebpackConfig(args) {
+    let webpackConfig = getWebpackCommonConfig(args);
+
+    const pkg = require(join(args.cwd, 'package.json'));
+
+    webpackConfig.entry = {};
+    webpackConfig.entry[pkg.name + "_loader_lib"] = ["./src/entry/" + pkg.name + "loader"];
+
+    webpackConfig.output.path = join(args.cwd, "libs/loader");
+    webpackConfig.output.filename = "[name]-[hash].js";
+    webpackConfig.output.library = "[name]";
+    webpackConfig.output.manifestname = join(args.cwd, "libs/loader", "[name]-manifest.json");
+
+    addMpaasCommonRefs(args, webpackConfig);
+
+    webpackConfig.plugins = [...webpackConfig.plugins,
+        new MpaasLibReferencePlugin({
+            context: args.cwd,
+            manifestname: join(args.cwd, './libs/wrapper/' + pkg.name + '_wrapper_lib-manifest.json')
+        }),
+
+        new webpack.DllPlugin({
+            path: webpackConfig.output.manifestname,
+            name: "[name]"
+        })
+    ];
+
+    // Config if no --no-compress.
+    if (args.compress) {
+        webpackConfig.UglifyJsPluginConfig = {
+            output: {
+                ascii_only: true,
+            },
+            compress: {
+                warnings: false,
+            },
+        };
+        webpackConfig.plugins = [...webpackConfig.plugins,
+            new webpack.optimize.UglifyJsPlugin(webpackConfig.UglifyJsPluginConfig),
+            new webpack.DefinePlugin({
+                'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production'),
+            }),
+        ];
+    } else {
+        if (process.env.NODE_ENV) {
+            webpackConfig.plugins = [...webpackConfig.plugins,
+                new webpack.DefinePlugin({
+                    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV),
+                }),
+            ];
+        }
+    }
+
+    webpackConfig.plugins = [...webpackConfig.plugins,
+        new webpack.optimize.DedupePlugin(),
+        new webpack.NoErrorsPlugin(),
+    ];
+
+    // Output map.json if hash.
+    if (args.hash) {
+        const pkg = require(join(args.cwd, 'package.json'));
+        webpackConfig.output.filename = webpackConfig.output.chunkFilename = '[name]-[chunkhash].js';
+        webpackConfig.plugins = [...webpackConfig.plugins,
+            require('map-json-webpack-plugin')({
+                assetsPath: pkg.name,
+            }),
+        ];
+    }
+
+    return webpackConfig;
+}
+
 
 function getWebpackConfig(args) {
-  let webpackConfig = getWebpackCommonConfig(args);
+    const commonName = args.hash ? 'common-[chunkhash].js' : 'common.js';
 
-  webpackConfig.plugins = webpackConfig.plugins || [];
+    let webpackConfig = getWebpackCommonConfig(args);
 
-  // Config outputPath.
-  if (args.outputPath) {
-    webpackConfig.output.path = args.outputPath;
-  }
+    webpackConfig.plugins = webpackConfig.plugins || [];
 
-  if (args.publicPath) {
-    webpackConfig.output.publicPath = args.publicPath;
-  }
-
-  // Config if no --no-compress.
-  if (args.compress) {
-    webpackConfig.UglifyJsPluginConfig = {
-      output: {
-        ascii_only: true,
-      },
-      compress: {
-        warnings: false,
-      },
-    };
-    webpackConfig.plugins = [...webpackConfig.plugins,
-      new webpack.optimize.UglifyJsPlugin(webpackConfig.UglifyJsPluginConfig),
-      new webpack.DefinePlugin({
-        'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production'),
-      }),
-    ];
-  } else {
-    if (process.env.NODE_ENV) {
-      webpackConfig.plugins = [...webpackConfig.plugins,
-        new webpack.DefinePlugin({
-          'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV),
-        }),
-      ];
+    // Config outputPath.
+    if (args.outputPath) {
+        webpackConfig.output.path = args.outputPath;
     }
-  }
 
-  webpackConfig.plugins = [...webpackConfig.plugins,
-    new webpack.optimize.DedupePlugin(),
-    new webpack.NoErrorsPlugin(),
-  ];
+    if (args.publicPath) {
+        webpackConfig.output.publicPath = args.publicPath;
+    }
 
-  // Output map.json if hash.
-  if (args.hash) {
-    const pkg = require(join(args.cwd, 'package.json'));
-    webpackConfig.output.filename = webpackConfig.output.chunkFilename = '[name]-[chunkhash].js';
+    // Config if no --no-compress.
+    if (args.compress) {
+        webpackConfig.UglifyJsPluginConfig = {
+            output: {
+                ascii_only: true,
+            },
+            compress: {
+                warnings: false,
+            },
+        };
+
+        webpackConfig.plugins = [...webpackConfig.plugins,
+            new webpack.optimize.CommonsChunkPlugin('common', commonName)
+        ];
+
+        addMpaasCommonRefs(args, webpackConfig);
+
+        webpackConfig.plugins = [...webpackConfig.plugins,
+            new webpack.optimize.UglifyJsPlugin(webpackConfig.UglifyJsPluginConfig),
+            new webpack.DefinePlugin({
+                'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production'),
+            }),
+
+            new MpaasLibReferencePlugin({
+                context: args.cwd,
+                manifestname: join(args.cwd, './libs/biz/' + pkg.name + '_biz_lib-manifest.json')
+            }),
+
+            new MpaasLibReferencePlugin({
+                context: args.cwd,
+                manifestname: join(args.cwd, './libs/wrapper/' + pkg.name + '_wrapper_lib-manifest.json')
+            }),
+            new MpaasLibReferencePlugin({
+                context: args.cwd,
+                manifestname: join(args.cwd, './libs/loader/' + pkg.name + '_loader_lib-manifest.json')
+            }),
+
+        ];
+
+    } else {
+        if (process.env.NODE_ENV) {
+            webpackConfig.plugins = [...webpackConfig.plugins,
+                new webpack.DefinePlugin({
+                    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV),
+                }),
+            ];
+        }
+    }
+
     webpackConfig.plugins = [...webpackConfig.plugins,
-      require('map-json-webpack-plugin')({
-        assetsPath: pkg.name,
-      }),
+        new webpack.optimize.DedupePlugin(),
+        new webpack.NoErrorsPlugin(),
     ];
-  }
 
-  webpackConfig = mergeCustomConfig(webpackConfig, resolve(args.cwd, args.config || 'webpack.config.js'));
 
-  return webpackConfig;
+
+    // Output map.json if hash.
+    if (args.hash) {
+        const pkg = require(join(args.cwd, 'package.json'));
+        webpackConfig.output.filename = webpackConfig.output.chunkFilename = '[name]-[chunkhash].js';
+        webpackConfig.plugins = [...webpackConfig.plugins,
+            require('map-json-webpack-plugin')({
+                assetsPath: pkg.name,
+            }),
+        ];
+    }
+
+    webpackConfig = mergeCustomConfig(webpackConfig, resolve(args.cwd, args.config || 'webpack.config.js'));
+
+    return webpackConfig;
 }
 
 export default function build(args, callback) {
-  // Get config.
-  let webpackConfig = getWebpackConfig(args);
-  webpackConfig = Array.isArray(webpackConfig) ? webpackConfig : [webpackConfig];
+    const pkg = require(join(args.cwd, 'package.json'));
+    //create assist files
+    //wrapper:export default { mps:require('./mps')}
 
-  let fileOutputPath;
-  webpackConfig.forEach(config => {
-    fileOutputPath = config.output.path;
-  });
+    //loader:export default {mps:require('./mpswrapper')}
 
-  if (args.watch) {
-    webpackConfig.forEach(config => {
-      config.plugins.push(
-        new ProgressPlugin((percentage, msg) => {
-          const stream = process.stderr;
-          if (stream.isTTY && percentage < 0.71) {
-            stream.cursorTo(0);
-            stream.write(`📦  ${chalk.magenta(msg)}`);
-            stream.clearLine(1);
-          } else if (percentage === 1) {
-            console.log(chalk.green('\nwebpack: bundle build is now finished.'));
-          }
-        })
-      );
-    });
-  }
 
-  function doneHandler(err, stats) {
-    if (args.json) {
-      const filename = typeof args.json === 'boolean' ? 'build-bundle.json' : args.json;
-      const jsonPath = join(fileOutputPath, filename);
-      writeFileSync(jsonPath, JSON.stringify(stats.toJson()), 'utf-8');
-      console.log(`Generate Json File: ${jsonPath}`);
-    }
+    // Get config.
+    let bizWebpackConfig = getBizLibWebpackConfig(args);
+    let wrapperWebpackConfig = getWrapperLibWebpackConfig(args);
+    let loaderWebpackConfig = getLoaderLibWebpackConfig(args);
+    let webpackConfig = getWebpackConfig(args);
+    //webpackConfig = [bizWebpackConfig, wrapperWebpackConfig, loaderWebpackConfig, webpackConfig];
 
-    const { errors } = stats.toJson();
-    if (errors && errors.length) {
-      process.on('exit', () => {
-        process.exit(1);
-      });
-    }
-    // if watch enabled only stats.hasErrors would log info
-    // otherwise  would always log info
-    if (!args.watch || stats.hasErrors()) {
-      const buildInfo = stats.toString({
-        colors: true,
-        children: true,
-        chunks: !!args.verbose,
-        modules: !!args.verbose,
-        chunkModules: !!args.verbose,
-        hash: !!args.verbose,
-        version: !!args.verbose,
-      });
-      if (stats.hasErrors()) {
-        console.error(buildInfo);
-      } else {
-        console.log(buildInfo);
-      }
-    }
+    var fileOutputPath = webpackConfig.output.path;
 
-    if (err) {
-      process.on('exit', () => {
-        process.exit(1);
-      });
-      console.error(err);
-    }
-
-    if (callback) {
-      callback(err);
-    }
-  }
-
-  // Run compiler.
-  const compiler = webpack(webpackConfig);
-
-  // Hack: remove extract-text-webpack-plugin log
-  if (!args.verbose) {
-    compiler.plugin('done', (stats) => {
-      stats.stats.forEach((stat) => {
-        stat.compilation.children = stat.compilation.children.filter((child) => {// eslint-disable-line
-          return child.name !== 'extract-text-webpack-plugin';
+    if (args.watch) {
+        webpackConfig.forEach(config => {
+            config.plugins.push(
+                new ProgressPlugin((percentage, msg) => {
+                    const stream = process.stderr;
+                    if (stream.isTTY && percentage < 0.71) {
+                        stream.cursorTo(0);
+                        stream.write(`📦  ${chalk.magenta(msg)}`);
+                        stream.clearLine(1);
+                    } else if (percentage === 1) {
+                        console.log(chalk.green('\nwebpack: bundle build is now finished.'));
+                    }
+                })
+            );
         });
-      });
-    });
-  }
+    }
 
-  if (args.watch) {
-    compiler.watch(args.watch || 200, doneHandler);
-  } else {
+    function doneHandler(err, stats) {
+        if (args.json) {
+            const filename = typeof args.json === 'boolean' ? 'build-bundle.json' : args.json;
+            const jsonPath = join(fileOutputPath, filename);
+            fs.writeFileSync(jsonPath, JSON.stringify(stats.toJson()), 'utf-8');
+            console.log(`Generate Json File: ${jsonPath}`);
+        }
+
+        const { errors } = stats.toJson();
+        if (errors && errors.length) {
+            process.on('exit', () => {
+                process.exit(1);
+            });
+        }
+        // if watch enabled only stats.hasErrors would log info
+        // otherwise  would always log info
+        if (!args.watch || stats.hasErrors()) {
+            const buildInfo = stats.toString({
+                colors: true,
+                children: true,
+                chunks: !!args.verbose,
+                modules: !!args.verbose,
+                chunkModules: !!args.verbose,
+                hash: !!args.verbose,
+                version: !!args.verbose,
+            });
+            if (stats.hasErrors()) {
+                console.error(buildInfo);
+            } else {
+                console.log(buildInfo);
+            }
+        }
+
+        if (err) {
+            process.on('exit', () => {
+                process.exit(1);
+            });
+            console.error(err);
+        }
+
+        while (!fs.existsSync(join(webpackConfig.output.path, "map.json"))) {
+            deasync.runLoopOnce();
+        }
+
+        var hash = {};
+        copyFiles(join(args.cwd, './libs/mpaas_common/'), webpackConfig.output.path, hash);
+        copyFiles(bizWebpackConfig.output.path, webpackConfig.output.path, hash);
+        copyFiles(wrapperWebpackConfig.output.path, webpackConfig.output.path, hash);
+        copyFiles(loaderWebpackConfig.output.path, webpackConfig.output.path, hash);
+        Object.assign(hash, require(join(args.cwd, webpackConfig.output.path, "map.json")));
+
+        fs.writeFileSync(join(args.cwd, webpackConfig.output.path, "map.json"),
+            JSON.stringify(hash, null, 4), 'utf-8');
+
+
+        if (callback) {
+            callback(err);
+        }
+    }
+
+    function over(err, stats) {
+
+        const { errors } = stats.toJson();
+        if (errors && errors.length) {
+            process.on('exit', () => {
+                process.exit(1);
+            });
+        }
+        // if watch enabled only stats.hasErrors would log info
+        // otherwise  would always log info
+        if (!args.watch || stats.hasErrors()) {
+            const buildInfo = stats.toString({
+                colors: true,
+                children: true,
+                chunks: !!args.verbose,
+                modules: !!args.verbose,
+                chunkModules: !!args.verbose,
+                hash: !!args.verbose,
+                version: !!args.verbose,
+            });
+            if (stats.hasErrors()) {
+                console.error(buildInfo);
+            } else {
+                console.log(buildInfo);
+            }
+        }
+
+        if (err) {
+            process.on('exit', () => {
+                process.exit(1);
+            });
+            console.error(err);
+        }
+    }
+
+
+    function deleteDir(path) {
+        if (fs.existsSync(path)) {
+            var files = fs.readdirSync(path); //读取该文件夹
+            files.forEach(function(file) {
+                var stats = fs.statSync(path + '/' + file);
+                if (stats.isDirectory()) {
+                    deleteDir(path + '/' + file);
+                } else {
+                    fs.unlinkSync(path + '/' + file);
+                }
+            });
+        }
+    }
+
+    function copyFiles(srcpath, despath, hash) {
+        if (fs.existsSync(srcpath)) {
+            var files = fs.readdirSync(srcpath); //读取该文件夹
+            files.forEach(function(file) {
+                var stats = fs.statSync(join(srcpath, file));
+                if (stats.isFile()) {
+                    if (file === "map.json") {
+                        //map.json
+                        Object.assign(hash, require(join(srcpath, file)));
+                    } else if (file.indexOf("manifest.json", file.length - "manifest.json".length) !== -1) {
+                        //manifest file
+                    } else {
+                        fs.copySync(join(srcpath, file), join(despath, file));
+                    }
+                }
+            });
+        }
+    }
+
+
+    deleteDir(bizWebpackConfig.output.path);
+    var compiler = webpack(bizWebpackConfig);
+    compiler.run(over);
+    while (!fs.existsSync(join(bizWebpackConfig.output.path, "map.json"))) {
+        deasync.runLoopOnce();
+    }
+
+    deleteDir(wrapperWebpackConfig.output.path);
+    compiler = webpack(wrapperWebpackConfig);
+    compiler.run(over);
+    while (!fs.existsSync(join(wrapperWebpackConfig.output.path, "map.json"))) {
+        deasync.runLoopOnce();
+    }
+
+    deleteDir(loaderWebpackConfig.output.path);
+    compiler = webpack(loaderWebpackConfig);
+    compiler.run(over);
+    while (!fs.existsSync(join(loaderWebpackConfig.output.path, "map.json"))) {
+        deasync.runLoopOnce();
+    }
+
+    deleteDir(webpackConfig.output.path);
+    compiler = webpack(webpackConfig);
     compiler.run(doneHandler);
-  }
+
 }
