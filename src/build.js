@@ -25,34 +25,7 @@ function addMpaasCommonRefs(args, webpackConfig) {
     }
 }
 
-function getBizLibWebpackConfig(args) {
-
-    let webpackConfig = getWebpackCommonConfig(args);
-
-    const pkg = require(join(args.cwd, 'package.json'));
-
-    webpackConfig.entry = {};
-    webpackConfig.entry[pkg.name + "_biz_lib"] = ["./src/entry/" + pkg.name];
-
-    webpackConfig.output.path = join(args.cwd, "libs/biz");
-    webpackConfig.output.filename = "[name]-[hash].js";
-    webpackConfig.output.library = "[name]";
-    webpackConfig.output.manifestname = join(args.cwd, "libs/biz", "[name]-manifest.json");
-
-    addMpaasCommonRefs(args, webpackConfig);
-
-    webpackConfig.plugins = [...webpackConfig.plugins,
-        new MpaasLibReferencePlugin({
-            context: args.cwd,
-            manifestname: join(args.cwd, './libs/mpaas_common/mpaas_common-manifest.json'),
-        }),
-
-        new webpack.DllPlugin({
-            path: webpackConfig.output.manifestname,
-            name: "[name]"
-        })
-    ];
-
+function addOtherPlugins(args, webpackConfig) {
     // Config if no --no-compress.
     if (args.compress) {
         webpackConfig.UglifyJsPluginConfig = {
@@ -94,7 +67,33 @@ function getBizLibWebpackConfig(args) {
             }),
         ];
     }
+}
 
+function getBizLibWebpackConfig(args) {
+
+    let webpackConfig = getWebpackCommonConfig(args);
+
+    const pkg = require(join(args.cwd, 'package.json'));
+
+    webpackConfig.entry = {};
+    webpackConfig.entry["biz_lib"] = [pkg[pkg.name]];
+
+    webpackConfig.output.path = join(args.cwd, "libs/biz");
+    webpackConfig.output.filename = "[name]-[hash].js";
+    webpackConfig.output.library = pkg.name + "_[name]";
+    webpackConfig.output.manifestname = join(args.cwd, "libs/biz", "[name]-manifest.json");
+
+    addMpaasCommonRefs(args, webpackConfig);
+
+    webpackConfig.plugins = [...webpackConfig.plugins,
+
+        new webpack.DllPlugin({
+            path: webpackConfig.output.manifestname,
+            name: pkg.name + "_[name]"
+        })
+    ];
+
+    addOtherPlugins(args, webpackConfig);
     return webpackConfig;
 }
 
@@ -105,11 +104,11 @@ function getWrapperLibWebpackConfig(args) {
     const pkg = require(join(args.cwd, 'package.json'));
 
     webpackConfig.entry = {};
-    webpackConfig.entry[pkg.name + "_wrapper_lib"] = ["./src/entry/" + pkg.name + "wrapper"];
+    webpackConfig.entry["wrapper_lib"] = [join(args.cwd, 'wrapper.jsx')];
 
     webpackConfig.output.path = join(args.cwd, "libs/wrapper");
     webpackConfig.output.filename = "[name]-[hash].js";
-    webpackConfig.output.library = "[name]";
+    webpackConfig.output.library = pkg.name + "_[name]";
     webpackConfig.output.manifestname = join(args.cwd, "libs/wrapper", "[name]-manifest.json");
 
     addMpaasCommonRefs(args, webpackConfig);
@@ -118,57 +117,16 @@ function getWrapperLibWebpackConfig(args) {
 
         new MpaasLibReferencePlugin({
             context: args.cwd,
-            manifestname: join(args.cwd, './libs/biz/' + pkg.name + '_biz_lib-manifest.json')
+            manifestname: join(args.cwd, './libs/biz/', 'biz_lib-manifest.json')
         }),
 
         new webpack.DllPlugin({
             path: webpackConfig.output.manifestname,
-            name: "[name]"
+            name: pkg.name + "_[name]"
         })
     ]
 
-    // Config if no --no-compress.
-    if (args.compress) {
-        webpackConfig.UglifyJsPluginConfig = {
-            output: {
-                ascii_only: true,
-            },
-            compress: {
-                warnings: false,
-            },
-        };
-        webpackConfig.plugins = [...webpackConfig.plugins,
-            new webpack.optimize.UglifyJsPlugin(webpackConfig.UglifyJsPluginConfig),
-            new webpack.DefinePlugin({
-                'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production'),
-            }),
-        ];
-    } else {
-        if (process.env.NODE_ENV) {
-            webpackConfig.plugins = [...webpackConfig.plugins,
-                new webpack.DefinePlugin({
-                    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV),
-                }),
-            ];
-        }
-    }
-
-    webpackConfig.plugins = [...webpackConfig.plugins,
-        new webpack.optimize.DedupePlugin(),
-        new webpack.NoErrorsPlugin(),
-    ];
-
-    // Output map.json if hash.
-    if (args.hash) {
-        const pkg = require(join(args.cwd, 'package.json'));
-        webpackConfig.output.filename = webpackConfig.output.chunkFilename = '[name]-[chunkhash].js';
-        webpackConfig.plugins = [...webpackConfig.plugins,
-            require('map-json-webpack-plugin')({
-                assetsPath: pkg.name,
-            }),
-        ];
-    }
-
+    addOtherPlugins(args, webpackConfig);
     return webpackConfig;
 }
 
@@ -180,11 +138,11 @@ function getLoaderLibWebpackConfig(args) {
     const pkg = require(join(args.cwd, 'package.json'));
 
     webpackConfig.entry = {};
-    webpackConfig.entry[pkg.name + "_loader_lib"] = ["./src/entry/" + pkg.name + "loader"];
+    webpackConfig.entry["loader_lib"] = [join(args.cwd, 'loader.jsx')];
 
     webpackConfig.output.path = join(args.cwd, "libs/loader");
     webpackConfig.output.filename = "[name]-[hash].js";
-    webpackConfig.output.library = "[name]";
+    webpackConfig.output.library = pkg.name + "_[name]";
     webpackConfig.output.manifestname = join(args.cwd, "libs/loader", "[name]-manifest.json");
 
     addMpaasCommonRefs(args, webpackConfig);
@@ -192,57 +150,16 @@ function getLoaderLibWebpackConfig(args) {
     webpackConfig.plugins = [...webpackConfig.plugins,
         new MpaasLibReferencePlugin({
             context: args.cwd,
-            manifestname: join(args.cwd, './libs/wrapper/' + pkg.name + '_wrapper_lib-manifest.json')
+            manifestname: join(args.cwd, './libs/wrapper/', 'wrapper_lib-manifest.json')
         }),
 
         new webpack.DllPlugin({
             path: webpackConfig.output.manifestname,
-            name: "[name]"
+            name: pkg.name + "_[name]"
         })
     ];
 
-    // Config if no --no-compress.
-    if (args.compress) {
-        webpackConfig.UglifyJsPluginConfig = {
-            output: {
-                ascii_only: true,
-            },
-            compress: {
-                warnings: false,
-            },
-        };
-        webpackConfig.plugins = [...webpackConfig.plugins,
-            new webpack.optimize.UglifyJsPlugin(webpackConfig.UglifyJsPluginConfig),
-            new webpack.DefinePlugin({
-                'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production'),
-            }),
-        ];
-    } else {
-        if (process.env.NODE_ENV) {
-            webpackConfig.plugins = [...webpackConfig.plugins,
-                new webpack.DefinePlugin({
-                    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV),
-                }),
-            ];
-        }
-    }
-
-    webpackConfig.plugins = [...webpackConfig.plugins,
-        new webpack.optimize.DedupePlugin(),
-        new webpack.NoErrorsPlugin(),
-    ];
-
-    // Output map.json if hash.
-    if (args.hash) {
-        const pkg = require(join(args.cwd, 'package.json'));
-        webpackConfig.output.filename = webpackConfig.output.chunkFilename = '[name]-[chunkhash].js';
-        webpackConfig.plugins = [...webpackConfig.plugins,
-            require('map-json-webpack-plugin')({
-                assetsPath: pkg.name,
-            }),
-        ];
-    }
-
+    addOtherPlugins(args, webpackConfig);
     return webpackConfig;
 }
 
@@ -263,72 +180,37 @@ function getWebpackConfig(args) {
         webpackConfig.output.publicPath = args.publicPath;
     }
 
-    // Config if no --no-compress.
-    if (args.compress) {
-        webpackConfig.UglifyJsPluginConfig = {
-            output: {
-                ascii_only: true,
-            },
-            compress: {
-                warnings: false,
-            },
-        };
-
-        webpackConfig.plugins = [...webpackConfig.plugins,
-            new webpack.optimize.CommonsChunkPlugin('common', commonName)
-        ];
-
-        addMpaasCommonRefs(args, webpackConfig);
-
-        webpackConfig.plugins = [...webpackConfig.plugins,
-            new webpack.optimize.UglifyJsPlugin(webpackConfig.UglifyJsPluginConfig),
-            new webpack.DefinePlugin({
-                'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production'),
-            }),
-
-            new MpaasLibReferencePlugin({
-                context: args.cwd,
-                manifestname: join(args.cwd, './libs/biz/' + pkg.name + '_biz_lib-manifest.json')
-            }),
-
-            new MpaasLibReferencePlugin({
-                context: args.cwd,
-                manifestname: join(args.cwd, './libs/wrapper/' + pkg.name + '_wrapper_lib-manifest.json')
-            }),
-            new MpaasLibReferencePlugin({
-                context: args.cwd,
-                manifestname: join(args.cwd, './libs/loader/' + pkg.name + '_loader_lib-manifest.json')
-            }),
-
-        ];
-
-    } else {
-        if (process.env.NODE_ENV) {
-            webpackConfig.plugins = [...webpackConfig.plugins,
-                new webpack.DefinePlugin({
-                    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV),
-                }),
-            ];
-        }
-    }
 
     webpackConfig.plugins = [...webpackConfig.plugins,
-        new webpack.optimize.DedupePlugin(),
-        new webpack.NoErrorsPlugin(),
+       // new webpack.optimize.CommonsChunkPlugin('common', commonName)
+    ];
+
+    addMpaasCommonRefs(args, webpackConfig);
+
+    webpackConfig.plugins = [...webpackConfig.plugins,
+        //new webpack.optimize.UglifyJsPlugin(webpackConfig.UglifyJsPluginConfig),
+        new webpack.DefinePlugin({
+            'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production'),
+        }),
+
+        new MpaasLibReferencePlugin({
+            context: args.cwd,
+            manifestname: join(args.cwd, './libs/biz/', 'biz_lib-manifest.json')
+        }),
+
+        new MpaasLibReferencePlugin({
+            context: args.cwd,
+            manifestname: join(args.cwd, './libs/wrapper/', 'wrapper_lib-manifest.json')
+        }),
+        new MpaasLibReferencePlugin({
+            context: args.cwd,
+            manifestname: join(args.cwd, './libs/loader/', 'loader_lib-manifest.json')
+        }),
+
     ];
 
 
-
-    // Output map.json if hash.
-    if (args.hash) {
-        const pkg = require(join(args.cwd, 'package.json'));
-        webpackConfig.output.filename = webpackConfig.output.chunkFilename = '[name]-[chunkhash].js';
-        webpackConfig.plugins = [...webpackConfig.plugins,
-            require('map-json-webpack-plugin')({
-                assetsPath: pkg.name,
-            }),
-        ];
-    }
+    addOtherPlugins(args, webpackConfig);
 
     webpackConfig = mergeCustomConfig(webpackConfig, resolve(args.cwd, args.config || 'webpack.config.js'));
 
@@ -336,12 +218,12 @@ function getWebpackConfig(args) {
 }
 
 export default function build(args, callback) {
-    const pkg = require(join(args.cwd, 'package.json'));
     //create assist files
-    //wrapper:export default { mps:require('./mps')}
-
-    //loader:export default {mps:require('./mpswrapper')}
-
+    const pkg = require(join(args.cwd, 'package.json'));
+    fs.removeSync(join(args.cwd, "wrapper.jsx"));
+    fs.outputFileSync(join(args.cwd, "wrapper.jsx"), "export default require('" + pkg[pkg.name] + "')");
+    fs.removeSync(join(args.cwd, "loader.jsx"));
+    fs.outputFileSync(join(args.cwd, "loader.jsx"), "export default require('./wrapper.jsx')");
 
     // Get config.
     let bizWebpackConfig = getBizLibWebpackConfig(args);
@@ -523,5 +405,9 @@ export default function build(args, callback) {
     deleteDir(webpackConfig.output.path);
     compiler = webpack(webpackConfig);
     compiler.run(doneHandler);
+
+    //delete assist files
+    fs.removeSync(join(args.cwd, "wrapper.jsx"));
+    fs.removeSync(join(args.cwd, "loader.jsx"));
 
 }
